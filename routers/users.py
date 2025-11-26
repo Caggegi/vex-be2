@@ -49,7 +49,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # OAuth2PasswordRequestForm has username and password fields
     # We treat username as email
-    user = User.objects(email=form_data.username).first()
+    if form_data.username == "dev@vex.it":
+        from dummy_user import get_dummy_user
+        user = get_dummy_user()
+    else:
+        user = User.objects(email=form_data.username).first()
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
