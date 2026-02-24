@@ -48,6 +48,11 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
     Concretizza l'ordine della spedizione secondo una quotation precedente (codice_offerta richiesto).
     Verifica il credito e genera la spedizione.
     """
+    if (
+        settings.MY_PHONE == "brokenphonenumber"
+        or request.mittente.cellulare != settings.MY_PHONE
+    ):
+        return {"result": "NO", "message": "Acquisto non consentito"}
     payload = request.model_dump(exclude_none=True)
     response = call_easyparcel("order", payload)
 
@@ -113,6 +118,11 @@ def create_order_fast(
     Crea un ordine di spedizione senza aver richiesto e indicato un codice_offerta da un preventivo.
     Selezionare esplicitamente il vettore nelle properties 'dettagli'.
     """
+    if (
+        settings.MY_PHONE == "brokenphonenumber"
+        or request.mittente.cellulare != settings.MY_PHONE
+    ):
+        return {"result": "NO", "message": "Acquisto non consentito"}
     payload = request.model_dump(exclude_none=True)
     response = call_easyparcel("order-fast", payload)
 
