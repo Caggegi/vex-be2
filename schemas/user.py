@@ -17,8 +17,13 @@ class PersonSchema(Schema):
 
 
 class OperationSchema(Schema):
+    tx_id = fields.String(data_key="id")
     date = fields.DateTime(dump_only=True)
+    title = fields.String()
+    description = fields.String()
+    subDescription = fields.String()
     amount = fields.Float(required=True)
+    tx_type = fields.String(data_key="type")
 
 
 class HistorySchema(Schema):

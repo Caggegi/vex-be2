@@ -1,4 +1,7 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
+from auth.dependencies import get_current_user
+from models.user import User, Person, Address
+from models.shipment import Shipping
 from config import settings
 import requests
 
@@ -40,23 +43,131 @@ def get_quotation(request: QuotationRequest):
 
 
 @router.post("/order", summary="Acquista spedizione")
-def create_order(request: OrderRequest):
+def create_order(request: OrderRequest, current_user: User = Depends(get_current_user)):
     """
     Concretizza l'ordine della spedizione secondo una quotation precedente (codice_offerta richiesto).
     Verifica il credito e genera la spedizione.
     """
     payload = request.model_dump(exclude_none=True)
-    return call_easyparcel("order", payload)
+    response = call_easyparcel("order", payload)
+
+    if response and response.get("result") == "OK":
+        # Split nominativo if possible
+        mittente_names = request.mittente.nominativo.split(" ", 1)
+        destinatario_names = request.destinatario.nominativo.split(" ", 1)
+
+        sender_address = Address(
+            country=request.mittente.nazione,
+            zip=request.mittente.cap,
+            city=request.mittente.localita,
+            address=request.mittente.indirizzo,
+            number=0,
+        )
+        receiver_address = Address(
+            country=request.destinatario.nazione,
+            zip=request.destinatario.cap,
+            city=request.destinatario.localita,
+            address=request.destinatario.indirizzo,
+            number=0,
+        )
+
+        sender = Person(
+            name=mittente_names[0],
+            surname=mittente_names[1] if len(mittente_names) > 1 else "",
+            address=[sender_address],
+        )
+        receiver = Person(
+            name=destinatario_names[0],
+            surname=destinatario_names[1] if len(destinatario_names) > 1 else "",
+            address=[receiver_address],
+        )
+
+        shipment = Shipping(
+            sender=sender,
+            receiver=receiver,
+            company={
+                "vettore": request.dettagli.vettore,
+                "lettera_vettura": response.get("lettera_vettura", ""),
+            },
+            price=float(response.get("importo_scalato", 0.0)),
+            status="in_progress",
+        )
+        shipment.save()
+
+        if not current_user.history:
+            from models.user import History
+
+            current_user.history = History()
+
+        current_user.history.shippings.append(shipment)
+        current_user.save()
+
+    return response
 
 
 @router.post("/order-fast", summary="Acquisto spedizione fast")
-def create_order_fast(request: OrderFastRequest):
+def create_order_fast(
+    request: OrderFastRequest, current_user: User = Depends(get_current_user)
+):
     """
     Crea un ordine di spedizione senza aver richiesto e indicato un codice_offerta da un preventivo.
     Selezionare esplicitamente il vettore nelle properties 'dettagli'.
     """
     payload = request.model_dump(exclude_none=True)
-    return call_easyparcel("order-fast", payload)
+    response = call_easyparcel("order-fast", payload)
+
+    if response and response.get("result") == "OK":
+        # Split nominativo if possible
+        mittente_names = request.mittente.nominativo.split(" ", 1)
+        destinatario_names = request.destinatario.nominativo.split(" ", 1)
+
+        sender_address = Address(
+            country=request.mittente.nazione,
+            zip=request.mittente.cap,
+            city=request.mittente.localita,
+            address=request.mittente.indirizzo,
+            number=0,
+        )
+        receiver_address = Address(
+            country=request.destinatario.nazione,
+            zip=request.destinatario.cap,
+            city=request.destinatario.localita,
+            address=request.destinatario.indirizzo,
+            number=0,
+        )
+
+        sender = Person(
+            name=mittente_names[0],
+            surname=mittente_names[1] if len(mittente_names) > 1 else "",
+            address=[sender_address],
+        )
+        receiver = Person(
+            name=destinatario_names[0],
+            surname=destinatario_names[1] if len(destinatario_names) > 1 else "",
+            address=[receiver_address],
+        )
+
+        shipment = Shipping(
+            sender=sender,
+            receiver=receiver,
+            company={
+                "vettore": request.dettagli.vettore,
+                "lettera_vettura": response.get("lettera_vettura", ""),
+            },
+            price=float(response.get("importo_scalato", 0.0)),
+            status="in_progress",
+        )
+        shipment.save()
+
+        if not current_user.history:
+            from models.user import History
+
+            current_user.history = History()
+
+        current_user.history.shippings.append(shipment)
+        current_user.save()
+
+    return response
 
 
 @router.post("/getwaybill", summary="Recupera la LDV (Waybill)")

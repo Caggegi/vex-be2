@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class Settings:
     SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
@@ -6,7 +10,15 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
     MONGO_DB_NAME = "VexONE"
     MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27018/VexONE")
-    API_KEY = os.getenv("EASYPARCEL_KEY", "c97673facd795f6385850fdea719a02db81216d4375f0349ddd0f1cfa6b4db57")
+    API_KEY = os.getenv(
+        "EASYPARCEL_KEY",
+        "c97673facd795f6385850fdea719a02db81216d4375f0349ddd0f1cfa6b4db57",
+    )
     API_ENDPOINT = os.getenv("EASYPARCEL_ENDPOINT", "https://api.easyparcel.it/")
+    SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+
 
 settings = Settings()
