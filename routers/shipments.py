@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Body
+from fastapi import APIRouter, HTTPException, status, Depends
 from marshmallow import ValidationError
 from schemas.shipment import ShipmentSchema
 from schemas.pydantic_models import ShipmentCreateModel, ShipmentUpdateModel
-from models.shipment import Shipment
+from models.shipment import Shipping
 from auth.dependencies import get_current_user
 from models.user import User
 from bson import ObjectId
@@ -14,28 +14,31 @@ router = APIRouter(
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_shipment(payload: ShipmentCreateModel, current_user: User = Depends(get_current_user)):
-    # We want to ensure the shipment is assigned to the current user
-    # But the schema requires customer_id.
-    # Let's inject it if missing or overwrite it to ensure correctness
-    data_dict = payload.model_dump()
-    data_dict['customer_id'] = str(current_user.id)
-    
     schema = ShipmentSchema()
     try:
-        data = schema.load(data_dict)
+        data = schema.load(payload.model_dump())
     except ValidationError as err:
         raise HTTPException(status_code=422, detail=err.messages)
     
-    shipment = Shipment(**data)
+    # Create the shipment
+    shipment = Shipping(**data)
     shipment.save()
+    
+    # Add to user history
+    # current_user.history is an EmbeddedDocument History
+    if not current_user.history:
+        from models.user import History
+        current_user.history = History()
+    
+    current_user.history.shippings.append(shipment)
+    current_user.save()
     
     return schema.dump(shipment)
 
 @router.get("/")
 async def get_shipments(current_user: User = Depends(get_current_user)):
-    # Return all shipments for the current user
-    # If we had roles, we could allow admins to see all
-    shipments = Shipment.objects(customer_id=current_user.id)
+    # Return all shipments for the current user from their history
+    shipments = current_user.history.shippings
     schema = ShipmentSchema(many=True)
     return schema.dump(shipments)
 
@@ -43,10 +46,12 @@ async def get_shipments(current_user: User = Depends(get_current_user)):
 async def get_shipment(shipment_id: str, current_user: User = Depends(get_current_user)):
     if not ObjectId.is_valid(shipment_id):
         raise HTTPException(status_code=400, detail="Invalid ID format")
-        
-    shipment = Shipment.objects(id=shipment_id, customer_id=current_user.id).first()
+    
+    # Check if the shipment is in the user's history
+    shipment = next((s for s in current_user.history.shippings if str(s.id) == shipment_id), None)
+    
     if not shipment:
-        raise HTTPException(status_code=404, detail="Shipment not found")
+        raise HTTPException(status_code=404, detail="Shipment not found in your history")
         
     schema = ShipmentSchema()
     return schema.dump(shipment)
@@ -56,24 +61,18 @@ async def update_shipment(shipment_id: str, payload: ShipmentUpdateModel, curren
     if not ObjectId.is_valid(shipment_id):
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    shipment = Shipment.objects(id=shipment_id, customer_id=current_user.id).first()
+    # Find the shipment in user history
+    shipment = next((s for s in current_user.history.shippings if str(s.id) == shipment_id), None)
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
 
     schema = ShipmentSchema()
     try:
-        # Partial update? The user didn't specify, but usually PUT is full, PATCH is partial.
-        # Marshmallow load(partial=True) allows missing fields.
-        # Let's assume we want to validate the fields that are sent.
-        # But for a full update, we might expect all fields.
-        # Let's go with partial=True to be flexible for now, or strict if we want to enforce structure.
-        # Given the complexity of nested fields, partial updates are safer for a demo.
         data = schema.load(payload.model_dump(exclude_unset=True), partial=True)
     except ValidationError as err:
         raise HTTPException(status_code=422, detail=err.messages)
 
     shipment.modify(**data)
-    # Reload to get updated state
     shipment.reload()
     
     return schema.dump(shipment)
@@ -83,9 +82,14 @@ async def delete_shipment(shipment_id: str, current_user: User = Depends(get_cur
     if not ObjectId.is_valid(shipment_id):
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    shipment = Shipment.objects(id=shipment_id, customer_id=current_user.id).first()
-    if not shipment:
+    # Find the shipment reference in user history
+    shipment_ref = next((s for s in current_user.history.shippings if str(s.id) == shipment_id), None)
+    if not shipment_ref:
         raise HTTPException(status_code=404, detail="Shipment not found")
         
-    shipment.delete()
+    # Delete the document and remove from history
+    shipment_ref.delete()
+    current_user.history.shippings.remove(shipment_ref)
+    current_user.save()
+    
     return None

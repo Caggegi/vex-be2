@@ -1,25 +1,38 @@
-from mongoengine import Document, StringField, DateTimeField, EmbeddedDocument, EmbeddedDocumentField
+from mongoengine import Document, StringField, DateTimeField, EmbeddedDocument, EmbeddedDocumentField, FloatField, ListField, IntField, ReferenceField
 from datetime import datetime
 
 class Address(EmbeddedDocument):
-    street = StringField(required=True)
-    city = StringField(required=True)
-    zip = StringField(required=True)
     country = StringField(required=True)
+    zip = StringField(required=True)
+    city = StringField(required=True)
+    address = StringField(required=True)
+    number = IntField(required=True)
 
-class UserProfile(EmbeddedDocument):
-    first_name = StringField(required=True)
-    last_name = StringField(required=True)
-    phone = StringField(required=True)
-    vat_number = StringField()
+class Person(EmbeddedDocument):
+    name = StringField(required=True)
+    surname = StringField(required=True)
+    address = ListField(EmbeddedDocumentField(Address))
+
+class Operation(EmbeddedDocument):
+    date = DateTimeField(default=datetime.utcnow)
+    amount = FloatField(required=True)
+
+class History(EmbeddedDocument):
+    # Notice: we use a string for Shipping to avoid circular import if Shipping is in another file
+    # Or we can use ListField(ReferenceField('Shipping')) if they are separate collections.
+    # The image shows Shipping[] inside History. In Mongo, this could be a list of embedded or list of references.
+    # Given Shipping is a top-level box in the diagram, it's likely a separate collection (Document).
+    shippings = ListField(ReferenceField('Shipping')) 
+    credits = ListField(EmbeddedDocumentField(Operation))
 
 class User(Document):
     meta = {'collection': 'users'}
     email = StringField(required=True, unique=True)
     password_hash = StringField(required=True)
-    role = StringField(default="customer")
-    profile = EmbeddedDocumentField(UserProfile)
-    default_address = EmbeddedDocumentField(Address)
-    vat_address = EmbeddedDocumentField(Address)
+    info = EmbeddedDocumentField(Person, required=True)
+    type = StringField(required=True, choices=["admin", "user"], default="user")
+    credit = FloatField(default=0.0)
+    history = EmbeddedDocumentField(History, default=lambda: History())
+    clients = EmbeddedDocumentField(Person) # Single object as per image arrow
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)

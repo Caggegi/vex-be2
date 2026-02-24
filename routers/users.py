@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Body
 from marshmallow import ValidationError
-from schemas.user import UserRegisterSchema, UserLoginSchema, UserSchema, UserUpdateSchema
-from schemas.pydantic_models import UserRegisterModel, UserLoginModel, UserUpdateModel
+from schemas.user import UserRegisterSchema, UserSchema, UserUpdateSchema
+from schemas.pydantic_models import UserRegisterModel, UserUpdateModel
 from models.user import User
 from auth.security import get_password_hash, verify_password, create_access_token
 from auth.dependencies import get_current_user
 from datetime import timedelta
 from config import settings
+from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter(
     prefix="/users",
@@ -29,11 +30,6 @@ async def register(payload: UserRegisterModel):
     # Hash password
     hashed_pw = get_password_hash(data['password'])
     
-    # Create user
-    # Note: data['profile'] etc are dictionaries, mongoengine EmbeddedDocumentField expects the EmbeddedDocument instance or dict (it usually handles dicts well if structure matches)
-    # However, since we used marshmallow to load, we have clean dicts.
-    # We need to be careful with the password field. The schema has 'password', the model has 'password_hash'.
-    
     user_data = data.copy()
     del user_data['password']
     user_data['password_hash'] = hashed_pw
@@ -43,17 +39,14 @@ async def register(payload: UserRegisterModel):
     
     return {"message": "User created successfully", "user_id": str(user.id)}
 
-from fastapi.security import OAuth2PasswordRequestForm
-
 @router.post("/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    # OAuth2PasswordRequestForm has username and password fields
-    # We treat username as email
     if form_data.username == "dev@vex.it":
         from dummy_user import get_dummy_user
         user = get_dummy_user()
     else:
         user = User.objects(email=form_data.username).first()
+        
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
