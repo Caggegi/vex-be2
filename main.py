@@ -13,6 +13,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://vexone.duckdns.org",
         "https://vexone.duckdns.org:50017",
+        "https://www.vexone.it",
+        "https://vexone.it",
     ],
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
