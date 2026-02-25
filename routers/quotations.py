@@ -59,6 +59,12 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
     ):
         return {"result": "NO", "message": "Acquisto non consentito"}
     payload = request.model_dump(exclude_none=True)
+
+    # EasyParcel richiede che il "codice_offerta" stia anche nell'oggetto "dettagli"
+    # sebbene la documentazione spesso lo riporti alla radice.
+    if "codice_offerta" in payload and "dettagli" in payload:
+        payload["dettagli"]["codice_offerta"] = payload["codice_offerta"]
+
     response = call_easyparcel("order", payload)
 
     if response and response.get("result") == "OK":
