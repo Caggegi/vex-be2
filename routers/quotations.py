@@ -70,6 +70,15 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
         or request.mittente.cellulare != settings.MY_PHONE
     ):
         return {"result": "NO", "message": "Acquisto non consentito"}
+    mitt_loc, mitt_prov = parse_localita(request.mittente.localita, request.mittente.provincia)
+    dest_loc, dest_prov = parse_localita(request.destinatario.localita, request.destinatario.provincia)
+
+    # Update the request model so the parsed values are included in payload
+    request.mittente.localita = mitt_loc
+    request.mittente.provincia = mitt_prov
+    request.destinatario.localita = dest_loc
+    request.destinatario.provincia = dest_prov
+
     payload = request.model_dump(exclude_none=True)
 
     # EasyParcel richiede che il "codice_offerta" stia anche nell'oggetto "dettagli"
@@ -83,15 +92,6 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
         # Split nominativo if possible
         mittente_names = request.mittente.nominativo.split(" ", 1)
         destinatario_names = request.destinatario.nominativo.split(" ", 1)
-
-        mitt_loc, mitt_prov = parse_localita(request.mittente.localita, request.mittente.provincia)
-        dest_loc, dest_prov = parse_localita(request.destinatario.localita, request.destinatario.provincia)
-
-        # Update the payload with the parsed values for future references if needed
-        request.mittente.localita = mitt_loc
-        request.mittente.provincia = mitt_prov
-        request.destinatario.localita = dest_loc
-        request.destinatario.provincia = dest_prov
 
         sender_address = Address(
             country=request.mittente.nazione,
@@ -183,6 +183,15 @@ def create_order_fast(
         or request.mittente.cellulare != settings.MY_PHONE
     ):
         return {"result": "NO", "message": "Acquisto non consentito"}
+    mitt_loc, mitt_prov = parse_localita(request.mittente.localita, request.mittente.provincia)
+    dest_loc, dest_prov = parse_localita(request.destinatario.localita, request.destinatario.provincia)
+
+    # Update the request model so the parsed values are included in payload
+    request.mittente.localita = mitt_loc
+    request.mittente.provincia = mitt_prov
+    request.destinatario.localita = dest_loc
+    request.destinatario.provincia = dest_prov
+
     payload = request.model_dump(exclude_none=True)
     response = call_easyparcel("order-fast", payload)
 
@@ -190,15 +199,6 @@ def create_order_fast(
         # Split nominativo if possible
         mittente_names = request.mittente.nominativo.split(" ", 1)
         destinatario_names = request.destinatario.nominativo.split(" ", 1)
-
-        mitt_loc, mitt_prov = parse_localita(request.mittente.localita, request.mittente.provincia)
-        dest_loc, dest_prov = parse_localita(request.destinatario.localita, request.destinatario.provincia)
-        
-        # Override the payload sent to easyparcel too, as they need the clean locality
-        payload["mittente"]["localita"] = mitt_loc
-        payload["mittente"]["provincia"] = mitt_prov
-        payload["destinatario"]["localita"] = dest_loc
-        payload["destinatario"]["provincia"] = dest_prov
 
         sender_address = Address(
             country=request.mittente.nazione,
