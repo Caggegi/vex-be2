@@ -4,6 +4,10 @@ from models.user import User, Person, Address
 from models.shipment import Shipping
 from config import settings
 import requests
+import re
+import smtplib
+from email.message import EmailMessage
+import json
 
 router = APIRouter(prefix="/quotations", tags=["quotations"])
 
@@ -37,6 +41,14 @@ def call_easyparcel(action: str, payload: dict):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def parse_localita(localita_str: str, default_prov: str):
+    """Estrae la località e la provincia se formattato come 'Località (PR)'"""
+    match = re.match(r"^(.*?)\s*\(([a-zA-Z]{2})\)$", localita_str)
+    if match:
+        return match.group(1).strip(), match.group(2).upper()
+    return localita_str, default_prov
+
+
 @router.post("/quotation", summary="Ottieni un preventivo")
 def get_quotation(request: QuotationRequest):
     """
@@ -47,7 +59,7 @@ def get_quotation(request: QuotationRequest):
     return call_easyparcel("quotation", payload)
 
 
-@router.post("/order", summary="Acquista spedizione")
+@router.post("/order-old", summary="Acquista spedizione")
 def create_order(request: OrderRequest, current_user: User = Depends(get_current_user)):
     """
     Concretizza l'ordine della spedizione secondo una quotation precedente (codice_offerta richiesto).
@@ -72,6 +84,15 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
         mittente_names = request.mittente.nominativo.split(" ", 1)
         destinatario_names = request.destinatario.nominativo.split(" ", 1)
 
+        mitt_loc, mitt_prov = parse_localita(request.mittente.localita, request.mittente.provincia)
+        dest_loc, dest_prov = parse_localita(request.destinatario.localita, request.destinatario.provincia)
+
+        # Update the payload with the parsed values for future references if needed
+        request.mittente.localita = mitt_loc
+        request.mittente.provincia = mitt_prov
+        request.destinatario.localita = dest_loc
+        request.destinatario.provincia = dest_prov
+
         sender_address = Address(
             country=request.mittente.nazione,
             zip=request.mittente.cap,
@@ -107,6 +128,7 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
             },
             price=float(response.get("importo_scalato", 0.0)),
             status="in_progress",
+            raw_response=response,
         )
         shipment.save()
 
@@ -118,10 +140,37 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
         current_user.history.shippings.append(shipment)
         current_user.save()
 
+        # Send email with formatted raw response
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = "Conferma Ordine Spedizione EasyParcel"
+            msg["From"] = settings.SMTP_USER
+            msg["To"] = current_user.email
+            
+            formatted_response = json.dumps(response, indent=4, ensure_ascii=False)
+            
+            content = f"""Gentile utente,
+            
+Ti confermiamo la ricezione del tuo ordine di spedizione.
+Di seguito i dettagli completi restituiti dal sistema:
+
+{formatted_response}
+
+Grazie per aver scelto il nostro servizio.
+"""
+            msg.set_content(content)
+
+            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
+                server.starttls()
+                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.send_message(msg)
+        except Exception as e:
+            print(f"Error sending order confirmation email: {e}")
+
     return response
 
 
-@router.post("/order-fast", summary="Acquisto spedizione fast")
+@router.post("/order", summary="Acquisto spedizione fast")
 def create_order_fast(
     request: OrderFastRequest, current_user: User = Depends(get_current_user)
 ):
@@ -142,6 +191,15 @@ def create_order_fast(
         mittente_names = request.mittente.nominativo.split(" ", 1)
         destinatario_names = request.destinatario.nominativo.split(" ", 1)
 
+        mitt_loc, mitt_prov = parse_localita(request.mittente.localita, request.mittente.provincia)
+        dest_loc, dest_prov = parse_localita(request.destinatario.localita, request.destinatario.provincia)
+        
+        # Override the payload sent to easyparcel too, as they need the clean locality
+        payload["mittente"]["localita"] = mitt_loc
+        payload["mittente"]["provincia"] = mitt_prov
+        payload["destinatario"]["localita"] = dest_loc
+        payload["destinatario"]["provincia"] = dest_prov
+
         sender_address = Address(
             country=request.mittente.nazione,
             zip=request.mittente.cap,
@@ -177,6 +235,7 @@ def create_order_fast(
             },
             price=float(response.get("importo_scalato", 0.0)),
             status="in_progress",
+            raw_response=response,
         )
         shipment.save()
 
@@ -187,6 +246,33 @@ def create_order_fast(
 
         current_user.history.shippings.append(shipment)
         current_user.save()
+
+        # Send email with formatted raw response
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = "Conferma Ordine Spedizione EasyParcel"
+            msg["From"] = settings.SMTP_USER
+            msg["To"] = current_user.email
+            
+            formatted_response = json.dumps(response, indent=4, ensure_ascii=False)
+            
+            content = f"""Gentile utente,
+            
+Ti confermiamo la ricezione del tuo ordine di spedizione.
+Di seguito i dettagli completi restituiti dal sistema:
+
+{formatted_response}
+
+Grazie per aver scelto il nostro servizio.
+"""
+            msg.set_content(content)
+
+            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
+                server.starttls()
+                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.send_message(msg)
+        except Exception as e:
+            print(f"Error sending order confirmation email: {e}")
 
     return response
 

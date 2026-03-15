@@ -9,5 +9,6 @@ class Shipping(Document):
     company = DictField(required=True) # "Object" in the image
     price = FloatField(required=True)
     status = StringField(required=True, default="pending") # "shipped" | "delivered" | "canceled"
+    raw_response = DictField(required=False)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
