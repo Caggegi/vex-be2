@@ -11,6 +11,7 @@ class ShippingSchema(Schema):
     status = fields.String(required=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
+    raw_response = fields.Dict()
 
 class ShipmentSchema(ShippingSchema):
     # Keeping ShipmentSchema name for compatibility with routers if they use it

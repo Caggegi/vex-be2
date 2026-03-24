@@ -16,6 +16,7 @@ class Address(EmbeddedDocument):
     country = StringField(required=True)
     zip = StringField(required=True)
     city = StringField(required=True)
+    provincia = StringField()
     address = StringField(required=True)
     number = IntField(required=True)
 
@@ -23,6 +24,9 @@ class Address(EmbeddedDocument):
 class Person(EmbeddedDocument):
     name = StringField(required=True)
     surname = StringField(required=True)
+    email = StringField()
+    phone = StringField()
+    tax_code = StringField()  # Codice Fiscale
     address = ListField(EmbeddedDocumentField(Address))
 
 
@@ -54,5 +58,7 @@ class User(Document):
     credit = FloatField(default=0.0)
     history = EmbeddedDocumentField(History, default=lambda: History())
     clients = EmbeddedDocumentField(Person)  # Single object as per image arrow
+    clients_list = ListField(EmbeddedDocumentField(Person))  # Saved recipients
+    easyparcel_id = StringField()  # EasyParcel customer ID (id_dva)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)

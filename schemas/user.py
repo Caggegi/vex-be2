@@ -6,6 +6,7 @@ class AddressSchema(Schema):
     country = fields.String(required=True)
     zip = fields.String(required=True)
     city = fields.String(required=True)
+    provincia = fields.String()
     address = fields.String(required=True)
     number = fields.Integer(required=True)
 
@@ -13,6 +14,9 @@ class AddressSchema(Schema):
 class PersonSchema(Schema):
     name = fields.String(required=True)
     surname = fields.String(required=True)
+    email = fields.String()
+    phone = fields.String()
+    tax_code = fields.String()
     address = fields.List(fields.Nested(AddressSchema))
 
 
@@ -42,6 +46,8 @@ class UserSchema(Schema):
     credit = fields.Float()
     history = fields.Nested(HistorySchema)
     clients = fields.Nested(PersonSchema)
+    clients_list = fields.List(fields.Nested(PersonSchema))
+    easyparcel_id = fields.String()
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
 

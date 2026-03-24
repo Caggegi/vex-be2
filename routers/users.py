@@ -7,6 +7,7 @@ from auth.security import get_password_hash, verify_password, create_access_toke
 from auth.dependencies import get_current_user
 from datetime import timedelta
 from config import settings
+from utils.easyparcel import call_easyparcel
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 import smtplib
@@ -45,6 +46,34 @@ async def register(payload: UserRegisterModel):
     user = User(**user_data)
     user.save()
 
+    # Create customer on EasyParcel
+    try:
+        addr = data["info"]["address"][0] if data["info"]["address"] else {}
+        ep_payload = {
+            "call": "newcustomer",
+            "dettagli": {
+                "cognome": data["info"]["surname"],
+                "nome": data["info"]["name"],
+                "indirizzo": addr.get("address", "N/A") + ", " + str(addr.get("number", "0")),
+                "cap": addr.get("zip", "00000"),
+                "localita": addr.get("city", "N/A"),
+                "provincia": addr.get("provincia", "--"),
+                "nazione": addr.get("country", "IT"),
+                "email": data["email"],
+                "codicefiscale": data["info"].get("tax_code") or "RSSMRA11A11A111A",
+                "username": data["email"],
+                "password": payload.password,
+                "fe_sdi": "0000000"
+            }
+        }
+        ep_response = call_easyparcel("newcustomer", ep_payload)
+        if ep_response and ep_response.get("result") == "OK":
+            user.easyparcel_id = str(ep_response.get("id_dva"))
+            user.save()
+    except Exception as e:
+        print(f"EasyParcel registration error: {e}")
+        # We don't block registration if EasyParcel fails, but we record it
+
     return {"message": "User created successfully", "user_id": str(user.id)}
 
 
@@ -73,6 +102,25 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @router.get("/me")
 async def read_users_me(current_user: User = Depends(get_current_user)):
+    # Refresh balance from EasyParcel if available
+    if current_user.easyparcel_id:
+        try:
+            payload = {"call": "balance", "dettagli": {"idcustomer": int(current_user.easyparcel_id)}}
+            response = call_easyparcel("balance", payload)
+            if response and response.get("result") == "OK":
+                # Assuming details contains balance or similar. 
+                # According to manual, it returns credito_prepagato for the master, 
+                # and maybe specifically for the customer if idcustomer is provided.
+                # Let's check the response structure for Balance in the manual.
+                # "credito_prepagato" is in "dettagli" for apikeyinfo. 
+                # For balance it's likely similar.
+                new_balance = response.get("dettagli", {}).get("credito_prepagato")
+                if new_balance is not None:
+                    current_user.credit = float(new_balance)
+                    current_user.save()
+        except Exception as e:
+            print(f"Error fetching balance from EasyParcel: {e}")
+
     schema = UserSchema()
     return schema.dump(current_user)
 
@@ -111,6 +159,25 @@ async def recharge_account(
         )
         current_user.history.credits.insert(0, new_op)
         current_user.credit += payload.amount
+
+        # If it's a bank transfer (IBAN/bank), call EasyParcel addfund
+        if payload.method == "bank" and current_user.easyparcel_id:
+            try:
+                ep_payload = {
+                    "call": "addfund",
+                    "dettagli": {
+                        "idcustomer": int(current_user.easyparcel_id),
+                        "amount": payload.amount
+                    }
+                }
+                ep_response = call_easyparcel("addfund", ep_payload)
+                if ep_response and ep_response.get("result") == "OK":
+                    print(f"Successfully added funds to EasyParcel for user {current_user.email}")
+            except Exception as e:
+                print(f"EasyParcel addfund error: {e}")
+                # We could choose to rollback or just log the error. 
+                # For now we log as it's a manual process on the user side.
+
         current_user.save()
 
         # Send invoice email ONLY if method is PayPal

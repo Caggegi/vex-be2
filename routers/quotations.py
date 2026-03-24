@@ -3,6 +3,7 @@ from auth.dependencies import get_current_user
 from models.user import User, Person, Address
 from models.shipment import Shipping
 from config import settings
+from utils.easyparcel import call_easyparcel
 import requests
 import re
 import smtplib
@@ -23,22 +24,6 @@ from schemas.easyparcel import (
 )
 
 
-def call_easyparcel(action: str, payload: dict):
-    url = f"{settings.API_ENDPOINT.rstrip('/')}/{action}/{settings.API_KEY}"
-    # Ensure call attribute is present in payload
-    if "call" not in payload:
-        payload["call"] = action
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError as e:
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"API Error {e.response.status_code}: {e.response.text}",
-        )
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 def parse_localita(localita_str: str, default_prov: str):
@@ -104,6 +89,7 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
             country=request.destinatario.nazione,
             zip=request.destinatario.cap,
             city=request.destinatario.localita,
+            provincia=request.destinatario.provincia,
             address=request.destinatario.indirizzo,
             number=0,
         )
@@ -116,6 +102,8 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
         receiver = Person(
             name=destinatario_names[0],
             surname=destinatario_names[1] if len(destinatario_names) > 1 else "",
+            email=request.destinatario.email,
+            phone=request.destinatario.cellulare,
             address=[receiver_address],
         )
 
@@ -138,6 +126,13 @@ def create_order(request: OrderRequest, current_user: User = Depends(get_current
             current_user.history = History()
 
         current_user.history.shippings.append(shipment)
+        
+        # Salva il destinatario nella clients_list se non presente
+        if receiver not in (current_user.clients_list or []):
+            if current_user.clients_list is None:
+                current_user.clients_list = []
+            current_user.clients_list.append(receiver)
+
         current_user.save()
 
         # Send email with formatted raw response
@@ -178,6 +173,32 @@ def create_order_fast(
     Crea un ordine di spedizione senza aver richiesto e indicato un codice_offerta da un preventivo.
     Selezionare esplicitamente il vettore nelle properties 'dettagli'.
     """
+
+    """
+    Una risposta sarebbe:
+    {
+    "result": "OK",
+    "errorcode": "0",
+    "errormessage": "ACQUISTO OK",
+    "codice_offerta": "CROM_69b71bf09f240",
+    "custom": "",
+    "ordine": "EAS-CROM_69b71bf09f240",
+    "id_ordine": 23835140,
+    "importo": "5.37",
+    "timestamp": "2026-03-15 20:52:01",
+    "version": "1.1.20",
+    "lettera_vettura": "3C1906J020905",
+    "url_ldv": "https://api.easyparcel.it/ldv/23835140_69b71bf200007.pdf",
+    "codice_ritiro": "Service not required",
+    "url_bordero": "https://api.easyparcel.it/tmp/35228_bordero_20260315215204.pdf",
+    "ldv_base64": "JVBERi0xLj...",
+    "single_waybills": [
+        {
+            "waybill_number": "3C1906J020905",
+            "waybill_base64": "JVB..."
+        }]
+    }
+    """
     if (
         settings.MY_PHONE == "brokenphonenumber"
         or request.mittente.cellulare != settings.MY_PHONE
@@ -211,6 +232,7 @@ def create_order_fast(
             country=request.destinatario.nazione,
             zip=request.destinatario.cap,
             city=request.destinatario.localita,
+            provincia=request.destinatario.provincia,
             address=request.destinatario.indirizzo,
             number=0,
         )
@@ -223,6 +245,8 @@ def create_order_fast(
         receiver = Person(
             name=destinatario_names[0],
             surname=destinatario_names[1] if len(destinatario_names) > 1 else "",
+            email=request.destinatario.email,
+            phone=request.destinatario.cellulare,
             address=[receiver_address],
         )
 
@@ -245,6 +269,13 @@ def create_order_fast(
             current_user.history = History()
 
         current_user.history.shippings.append(shipment)
+        
+        # Salva il destinatario nella clients_list se non presente
+        if receiver not in (current_user.clients_list or []):
+            if current_user.clients_list is None:
+                current_user.clients_list = []
+            current_user.clients_list.append(receiver)
+
         current_user.save()
 
         # Send email with formatted raw response
