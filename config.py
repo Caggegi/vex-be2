@@ -9,12 +9,12 @@ class Settings:
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
     MONGO_DB_NAME = "VexONE"
-    MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/VexONE")
+    MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27018/VexONE")
     API_KEY = os.getenv(
         "EASYPARCEL_KEY",
         "brokenapikey",
     )
-    API_ENDPOINT = os.getenv("EASYPARCEL_ENDPOINT", "https://broken.api.easyparcel.it/")
+    API_ENDPOINT = os.getenv("EASYPARCEL_ENDPOINT", "https://api.easyparcel.it/")
     SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USER = os.getenv("SMTP_USER", "")
